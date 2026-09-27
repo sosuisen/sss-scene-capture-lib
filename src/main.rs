@@ -1,4 +1,4 @@
-use scene_capture::*;
+use sss_scene_capture_lib::*;
 
 fn main() {
     show_startup_prompt(&mut std::io::stdout()).unwrap();

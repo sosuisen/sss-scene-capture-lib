@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "scene_capture"
+name = "sss-scene-capture-lib"
 version = "0.1.0"
