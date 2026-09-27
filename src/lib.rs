@@ -1,6 +1,8 @@
 use std::io::BufRead;
 use std::io::Write;
 use std::time::Duration;
+use xcap::Monitor;
+use xcap::image::RgbaImage;
 
 pub fn show_startup_prompt(writer: &mut impl Write) -> std::io::Result<()> {
     writeln!(writer, "Press Enter to start...")?;
@@ -23,6 +25,14 @@ pub fn countdown(writer: &mut impl Write, mut sleep: impl FnMut(Duration)) -> st
     }
     writeln!(writer, "Go!")?;
     Ok(())
+}
+
+pub fn capture_primary_monitor() -> Result<RgbaImage, Box<dyn std::error::Error>> {
+    let monitors = Monitor::all()?;
+    let primary = monitors.into_iter()
+        .find(|m| m.is_primary().unwrap_or(false))
+        .ok_or("primary monitor not found")?;
+    Ok(primary.capture_image()?)
 }
 
 #[cfg(test)]
@@ -78,5 +88,13 @@ mod tests {
         let mut sleeps: Vec<Duration> = Vec::new();
         countdown(&mut buf, |d| sleeps.push(d)).unwrap();
         assert_eq!(sleeps, vec![Duration::from_secs(1); 3]);
+    }
+
+    // プライマリーモニターをキャプチャしたら、高さと幅が100より大きい画像が返ってくる。
+    #[test]
+    fn captures_primary_monitor_and_returns_image_with_height_and_width_greater_than_100() {
+        let image = capture_primary_monitor().unwrap();
+        assert!(image.width() > 100);
+        assert!(image.height() > 100);
     }
 }
