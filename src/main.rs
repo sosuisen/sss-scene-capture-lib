@@ -28,11 +28,11 @@ fn main() {
         println!("Stopped.");
 
         save_image(&image, &path).unwrap();
-        save_wav(
+        save_mp3(
             &samples,
             sample_rate,
             channels,
-            &session_dir.join("sound.wav"),
+            &session_dir.join("sound.mp3"),
         )
         .unwrap();
         println!("Saved to {}", session_dir.display());
