@@ -18,12 +18,13 @@ fn main() {
     let now = chrono::Local::now();
     let session_dir = create_session_dir(now).unwrap();
     let path = session_dir.join("screen.png");
-    save_image(&image, &path).unwrap();
 
     let recording = start_recording().unwrap();
     println!("Recording... Press Enter to stop.");
     wait_for_enter(&mut reader, || stop_recording(recording)).unwrap();
     println!("Stopped.");
+
+    save_image(&image, &path).unwrap();
 }
 
 fn show_startup_prompt(writer: &mut impl Write) -> std::io::Result<()> {
