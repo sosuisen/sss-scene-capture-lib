@@ -176,7 +176,7 @@ mod tests {
         let actual = recording.samples.lock().unwrap().len();
         let tolerance = expected / 5;
         assert!(
-            (actual as i64 - expected as i64).abs() <= tolerance as i64,
+            actual.abs_diff(expected) <= tolerance,
             "Expected about {expected} samples, but got {actual} samples"
         );
     }
