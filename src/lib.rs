@@ -118,10 +118,11 @@ fn build_streams(
     Ok((stream, silence, config))
 }
 
-pub fn stop_recording(recording: Recording) {
+pub fn stop_recording(recording: Recording) -> Vec<f32> {
     // 送信もjoinも、相手のスレッドがすでに終わっているときだけ失敗する。無視してよい。
     let _ = recording.stop_tx.send(());
     let _ = recording.thread.join();
+    std::mem::take(&mut *recording.samples.lock().unwrap())
 }
 
 pub fn save_wav(
@@ -188,12 +189,11 @@ mod tests {
 
         let _tone = play_test_tone().unwrap();
         let recording = start_recording().unwrap();
-        let samples = Arc::clone(&recording.samples);
         let expected = recording.sample_rate as usize * recording.channels as usize;
         std::thread::sleep(Duration::from_secs(1));
-        stop_recording(recording);
+        let samples = stop_recording(recording);
 
-        let actual = samples.lock().unwrap().len();
+        let actual = samples.len();
         let tolerance = expected / 5;
         assert!(
             actual.abs_diff(expected) <= tolerance,
@@ -208,14 +208,12 @@ mod tests {
 
         let _silence = play_silence().unwrap();
         let recording = start_recording().unwrap();
-        let samples = Arc::clone(&recording.samples);
         let expected = recording.sample_rate as usize * recording.channels as usize;
         std::thread::sleep(Duration::from_millis(500));
         let _tone = play_test_tone().unwrap();
         std::thread::sleep(Duration::from_millis(1000));
-        stop_recording(recording);
+        let samples = stop_recording(recording);
 
-        let samples = samples.lock().unwrap();
         assert_ne!(samples[0], 0.0, "recording started with silence");
 
         let actual = samples.len();
@@ -232,7 +230,6 @@ mod tests {
         let _audio = AUDIO_DEVICE.lock().unwrap_or_else(|e| e.into_inner());
 
         let recording = start_recording().unwrap();
-        let samples = Arc::clone(&recording.samples);
         let expected = recording.sample_rate as usize * recording.channels as usize * 3 / 2;
         let tone = play_test_tone().unwrap();
         std::thread::sleep(Duration::from_millis(500));
@@ -240,9 +237,9 @@ mod tests {
         std::thread::sleep(Duration::from_millis(500));
         let _tone = play_test_tone().unwrap(); // 再び音
         std::thread::sleep(Duration::from_millis(500));
-        stop_recording(recording);
+        let samples = stop_recording(recording);
 
-        let actual = samples.lock().unwrap().len();
+        let actual = samples.len();
         let tolerance = expected / 5;
         assert!(
             actual.abs_diff(expected) <= tolerance,
@@ -279,6 +276,25 @@ mod tests {
 
         assert!(path.exists(), "{} was not created", path.display());
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    // 録音停止ルーチンは、録音したサンプル列を返す。
+    #[test]
+    fn stop_recording_routine_returns_recorded_samples() {
+        let _audio = AUDIO_DEVICE.lock().unwrap_or_else(|e| e.into_inner());
+
+        let _tone = play_test_tone().unwrap();
+        let recording = start_recording().unwrap();
+        let expected = recording.sample_rate as usize * recording.channels as usize / 2;
+        std::thread::sleep(Duration::from_millis(500));
+
+        let samples = stop_recording(recording);
+
+        assert!(
+            samples.len().abs_diff(expected) <= expected / 5,
+            "Expected about {expected} samples (0.5 seconds), but got {}",
+            samples.len()
+        );
     }
 
     fn play_test_tone() -> Result<Stream, Box<dyn std::error::Error>> {
