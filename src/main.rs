@@ -2,35 +2,45 @@ use sss_scene_capture_lib::*;
 use std::io::BufRead;
 use std::io::Write;
 
+// Ctrl+Cで終了するまでセッションを繰り返す。入力が閉じられた（EOF）ときも終了する。
 fn main() {
-    show_startup_prompt(&mut std::io::stdout()).unwrap();
     let mut reader = std::io::stdin().lock();
-    wait_for_enter(&mut reader).unwrap();
+    loop {
+        show_startup_prompt(&mut std::io::stdout()).unwrap();
+        if !wait_for_enter(&mut reader).unwrap() {
+            break;
+        }
 
-    println!("Starting scene capture...");
-    let image = capture_primary_monitor().unwrap();
-    println!("Captured image: {}x{}", image.width(), image.height());
+        println!("Starting scene capture...");
+        let image = capture_primary_monitor().unwrap();
+        println!("Captured image: {}x{}", image.width(), image.height());
 
-    let now = chrono::Local::now();
-    let session_dir = create_session_dir(now).unwrap();
-    let path = session_dir.join("screen.png");
+        let now = chrono::Local::now();
+        let session_dir = create_session_dir(now).unwrap();
+        let path = session_dir.join("screen.png");
 
-    let recording = start_recording().unwrap();
-    println!("Recording... Press Enter to stop.");
-    wait_for_enter(&mut reader).unwrap();
-    let sample_rate = recording.sample_rate;
-    let channels = recording.channels;
-    let samples = stop_recording(recording);
-    println!("Stopped.");
+        let recording = start_recording().unwrap();
+        println!("Recording... Press Enter to stop.");
+        let pressed = wait_for_enter(&mut reader).unwrap();
+        let sample_rate = recording.sample_rate;
+        let channels = recording.channels;
+        let samples = stop_recording(recording);
+        println!("Stopped.");
 
-    save_image(&image, &path).unwrap();
-    save_wav(
-        &samples,
-        sample_rate,
-        channels,
-        &session_dir.join("sound.wav"),
-    )
-    .unwrap();
+        save_image(&image, &path).unwrap();
+        save_wav(
+            &samples,
+            sample_rate,
+            channels,
+            &session_dir.join("sound.wav"),
+        )
+        .unwrap();
+        println!("Saved to {}", session_dir.display());
+
+        if !pressed {
+            break;
+        }
+    }
 }
 
 fn show_startup_prompt(writer: &mut impl Write) -> std::io::Result<()> {
