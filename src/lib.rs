@@ -145,6 +145,32 @@ pub fn save_wav(
     Ok(())
 }
 
+pub fn save_mp3(
+    samples: &[f32],
+    sample_rate: u32,
+    channels: u16,
+    path: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let config = rusty_mp3::Mp3EncoderConfig {
+        bitrate_kbps: 192,
+        vbr_quality: None, // NoneでCBR
+    };
+    let mut encoder = rusty_mp3::Mp3Encoder::new(config);
+    encoder.push_pcm_f32(samples, channels, sample_rate)?;
+    encoder.finish();
+
+    let mut mp3 = Vec::new();
+    loop {
+        match encoder.next_packet() {
+            Ok(frame) => mp3.extend_from_slice(&frame),
+            Err(rusty_mp3::error::Error::Eof) => break,
+            Err(e) => return Err(e.into()),
+        }
+    }
+    std::fs::write(path, mp3)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
@@ -273,6 +299,20 @@ mod tests {
         let samples = [0.0f32, 0.5, -0.5, 0.0];
 
         save_wav(&samples, 48000, 2, &path).unwrap();
+
+        assert!(path.exists(), "{} was not created", path.display());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    // 音声がMP3として指定のファイル名で保存される。
+    #[test]
+    fn saves_mp3_to_the_given_file_name() {
+        let dir = std::env::temp_dir().join("sss_saves_mp3_to_the_given_file_name");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("sound.mp3");
+        let samples = [0.0f32, 0.5, -0.5, 0.0];
+
+        save_mp3(&samples, 48000, 2, &path).unwrap();
 
         assert!(path.exists(), "{} was not created", path.display());
         std::fs::remove_dir_all(&dir).unwrap();
