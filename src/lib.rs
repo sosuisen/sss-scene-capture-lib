@@ -15,6 +15,7 @@ pub struct Recording {
     pub samples: Arc<Mutex<Vec<f32>>>,
     pub sample_rate: u32,
     pub channels: u16,
+    _silence: Stream,
 }
 
 pub fn show_startup_prompt(writer: &mut impl Write) -> std::io::Result<()> {
@@ -81,12 +82,20 @@ pub fn start_recording() -> Result<Recording, Box<dyn std::error::Error>> {
         },
         None,
     )?;
+    let silence = device.build_output_stream(
+        config,
+        |data: &mut [f32], _: &cpal::OutputCallbackInfo| data.fill(0.0),
+        |err| eprintln!("Silence error: {:?}", err),
+        None,
+    )?;
+    silence.play()?;
     stream.play()?;
     Ok(Recording {
         stream,
         samples,
         sample_rate: config.sample_rate,
         channels: config.channels,
+        _silence: silence,
     })
 }
 
@@ -202,6 +211,29 @@ mod tests {
         assert!(
             actual.abs_diff(expected) <= tolerance,
             "Expected about {expected} samples, but got {actual} samples"
+        );
+    }
+
+    // 録音中に無音の区間があっても、その区間のデータが記録される。
+    #[test]
+    fn start_recording_routine_records_silence_in_the_middle() {
+        let _audio = AUDIO_DEVICE.lock().unwrap_or_else(|e| e.into_inner());
+
+        let recording = start_recording().unwrap();
+        let tone = play_test_tone().unwrap();
+        std::thread::sleep(Duration::from_millis(500));
+        drop(tone); // ここから無音
+        std::thread::sleep(Duration::from_millis(500));
+        let _tone = play_test_tone().unwrap(); // 再び音
+        std::thread::sleep(Duration::from_millis(500));
+        drop(recording.stream);
+
+        let expected = recording.sample_rate as usize * recording.channels as usize * 3 / 2;
+        let actual = recording.samples.lock().unwrap().len();
+        let tolerance = expected / 5;
+        assert!(
+            actual.abs_diff(expected) <= tolerance,
+            "Expected about {expected} samples (1.5 seconds), but got {actual} samples"
         );
     }
 
