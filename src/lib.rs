@@ -6,16 +6,21 @@ use std::io::BufRead;
 use std::io::Write;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::mpsc::Sender;
+use std::sync::mpsc::channel;
+use std::thread::JoinHandle;
 use std::time::Duration;
 use xcap::Monitor;
 use xcap::image::RgbaImage;
 
+// 録音セッション。cpalのStreamは録音専用スレッドだけが所有する（ADR-003）。
+// 外に出るのは停止命令を送るSenderと、スレッドの終了を待つJoinHandleだけで、どちらもSendである。
 pub struct Recording {
-    pub stream: Stream,
     pub samples: Arc<Mutex<Vec<f32>>>,
     pub sample_rate: u32,
     pub channels: u16,
-    _silence: Stream,
+    stop_tx: Sender<()>,
+    thread: JoinHandle<()>,
 }
 
 pub fn show_startup_prompt(writer: &mut impl Write) -> std::io::Result<()> {
@@ -53,54 +58,90 @@ pub fn capture_primary_monitor() -> Result<RgbaImage, Box<dyn std::error::Error>
 pub fn start_recording() -> Result<Recording, Box<dyn std::error::Error>> {
     let samples = Arc::new(Mutex::new(Vec::new()));
     let sink = Arc::clone(&samples);
+    let (ready_tx, ready_rx) = channel();
+    let (stop_tx, stop_rx) = channel::<()>();
 
+    let thread = std::thread::spawn(move || match build_streams(sink) {
+        Ok((stream, silence, config)) => {
+            ready_tx
+                .send(Ok((config.sample_rate, config.channels)))
+                .unwrap();
+            // 停止命令が来るか、Senderが捨てられるまで待つ。
+            let _ = stop_rx.recv();
+            drop(stream);
+            drop(silence);
+        }
+        Err(e) => ready_tx.send(Err(e)).unwrap(),
+    });
+
+    let (sample_rate, channels) = ready_rx
+        .recv()
+        .map_err(|_| "recording thread exited before it was ready")??;
+
+    Ok(Recording {
+        samples,
+        sample_rate,
+        channels,
+        stop_tx,
+        thread,
+    })
+}
+
+// 既定の再生デバイスでループバック録音ストリームと無音の出力ストリームを作り、両方を開始する。
+// エラーはスレッド境界を越えられるようStringで返す。
+fn build_streams(
+    sink: Arc<Mutex<Vec<f32>>>,
+) -> Result<(Stream, Stream, cpal::StreamConfig), String> {
     let host = cpal::default_host();
     let device = host
         .default_output_device()
         .ok_or("no output device available")?;
-    let config = device.default_output_config()?.config();
+    let config = device
+        .default_output_config()
+        .map_err(|e| e.to_string())?
+        .config();
 
     let mut started = false;
-    let stream = device.build_input_stream(
-        config,
-        move |data: &[f32], _: &cpal::InputCallbackInfo| {
-            let data = if started {
-                data
-            } else {
-                match data.iter().position(|s| *s != 0.0) {
-                    Some(i) => {
-                        started = true;
-                        &data[i..]
+    let stream = device
+        .build_input_stream(
+            config,
+            move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                let data = if started {
+                    data
+                } else {
+                    match data.iter().position(|s| *s != 0.0) {
+                        Some(i) => {
+                            started = true;
+                            &data[i..]
+                        }
+                        None => return,
                     }
-                    None => return,
-                }
-            };
-            sink.lock().unwrap().extend_from_slice(data);
-        },
-        move |err| {
-            eprintln!("Stream error: {:?}", err);
-        },
-        None,
-    )?;
-    let silence = device.build_output_stream(
-        config,
-        |data: &mut [f32], _: &cpal::OutputCallbackInfo| data.fill(0.0),
-        |err| eprintln!("Silence error: {:?}", err),
-        None,
-    )?;
-    silence.play()?;
-    stream.play()?;
-    Ok(Recording {
-        stream,
-        samples,
-        sample_rate: config.sample_rate,
-        channels: config.channels,
-        _silence: silence,
-    })
+                };
+                sink.lock().unwrap().extend_from_slice(data);
+            },
+            move |err| {
+                eprintln!("Stream error: {:?}", err);
+            },
+            None,
+        )
+        .map_err(|e| e.to_string())?;
+    let silence = device
+        .build_output_stream(
+            config,
+            |data: &mut [f32], _: &cpal::OutputCallbackInfo| data.fill(0.0),
+            |err| eprintln!("Silence error: {:?}", err),
+            None,
+        )
+        .map_err(|e| e.to_string())?;
+    silence.play().map_err(|e| e.to_string())?;
+    stream.play().map_err(|e| e.to_string())?;
+    Ok((stream, silence, config))
 }
 
 pub fn stop_recording(recording: Recording) {
-    drop(recording);
+    // 送信もjoinも、相手のスレッドがすでに終わっているときだけ失敗する。無視してよい。
+    let _ = recording.stop_tx.send(());
+    let _ = recording.thread.join();
 }
 
 #[cfg(test)]
@@ -168,9 +209,9 @@ mod tests {
         assert!(image.height() > 100);
     }
 
-    // 録音開始ルーチンは、Streamを返す。
+    // 録音開始ルーチンは、Recordingを返す。
     #[test]
-    fn start_recording_routine_returns_stream() {
+    fn start_recording_routine_returns_recording() {
         let result: Result<Recording, Box<dyn std::error::Error>> = start_recording();
         assert!(result.is_ok());
     }
@@ -182,11 +223,12 @@ mod tests {
 
         let _tone = play_test_tone().unwrap();
         let recording = start_recording().unwrap();
-        std::thread::sleep(Duration::from_secs(1));
-        drop(recording.stream);
-
+        let samples = Arc::clone(&recording.samples);
         let expected = recording.sample_rate as usize * recording.channels as usize;
-        let actual = recording.samples.lock().unwrap().len();
+        std::thread::sleep(Duration::from_secs(1));
+        stop_recording(recording);
+
+        let actual = samples.lock().unwrap().len();
         let tolerance = expected / 5;
         assert!(
             actual.abs_diff(expected) <= tolerance,
@@ -201,15 +243,16 @@ mod tests {
 
         let _silence = play_silence().unwrap();
         let recording = start_recording().unwrap();
+        let samples = Arc::clone(&recording.samples);
+        let expected = recording.sample_rate as usize * recording.channels as usize;
         std::thread::sleep(Duration::from_millis(500));
         let _tone = play_test_tone().unwrap();
         std::thread::sleep(Duration::from_millis(1000));
-        drop(recording.stream);
+        stop_recording(recording);
 
-        let samples = recording.samples.lock().unwrap();
+        let samples = samples.lock().unwrap();
         assert_ne!(samples[0], 0.0, "recording started with silence");
 
-        let expected = recording.sample_rate as usize * recording.channels as usize;
         let actual = samples.len();
         let tolerance = expected / 5;
         assert!(
@@ -224,16 +267,17 @@ mod tests {
         let _audio = AUDIO_DEVICE.lock().unwrap_or_else(|e| e.into_inner());
 
         let recording = start_recording().unwrap();
+        let samples = Arc::clone(&recording.samples);
+        let expected = recording.sample_rate as usize * recording.channels as usize * 3 / 2;
         let tone = play_test_tone().unwrap();
         std::thread::sleep(Duration::from_millis(500));
         drop(tone); // ここから無音
         std::thread::sleep(Duration::from_millis(500));
         let _tone = play_test_tone().unwrap(); // 再び音
         std::thread::sleep(Duration::from_millis(500));
-        drop(recording.stream);
+        stop_recording(recording);
 
-        let expected = recording.sample_rate as usize * recording.channels as usize * 3 / 2;
-        let actual = recording.samples.lock().unwrap().len();
+        let actual = samples.lock().unwrap().len();
         let tolerance = expected / 5;
         assert!(
             actual.abs_diff(expected) <= tolerance,
