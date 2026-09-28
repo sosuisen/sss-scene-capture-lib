@@ -58,9 +58,22 @@ pub fn start_recording() -> Result<Recording, Box<dyn std::error::Error>> {
         .default_output_device()
         .ok_or("no output device available")?;
     let config = device.default_output_config()?.config();
+
+    let mut started = false;
     let stream = device.build_input_stream(
         config,
         move |data: &[f32], _: &cpal::InputCallbackInfo| {
+            let data = if started {
+                data
+            } else {
+                match data.iter().position(|s| *s != 0.0) {
+                    Some(i) => {
+                        started = true;
+                        &data[i..]
+                    }
+                    None => return,
+                }
+            };
             sink.lock().unwrap().extend_from_slice(data);
         },
         move |err| {
@@ -82,6 +95,8 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
+
+    static AUDIO_DEVICE: Mutex<()> = Mutex::new(());
 
     // 起動すると、Press Enter to start...が表示される。
     #[test]
@@ -150,6 +165,8 @@ mod tests {
     // 録音ルーチンを1秒間実行すると、1秒分の録音データが生成される。
     #[test]
     fn start_recording_routine_generates_1_second_of_audio_data() {
+        let _audio = AUDIO_DEVICE.lock().unwrap_or_else(|e| e.into_inner());
+
         let _tone = play_test_tone().unwrap();
         let recording = start_recording().unwrap();
         std::thread::sleep(Duration::from_secs(1));
@@ -164,8 +181,39 @@ mod tests {
         );
     }
 
-    // テスト用に、既定の出力デバイスで440Hzの正弦波を小さな音量で鳴らし続ける。
+    // 録音開始直後の無音は記録されない。最初に音が届いた時点から記録が始まる。
+    #[test]
+    fn start_recording_routine_does_not_record_silence_at_the_beginning() {
+        let _audio = AUDIO_DEVICE.lock().unwrap_or_else(|e| e.into_inner());
+
+        let _silence = play_silence().unwrap();
+        let recording = start_recording().unwrap();
+        std::thread::sleep(Duration::from_millis(500));
+        let _tone = play_test_tone().unwrap();
+        std::thread::sleep(Duration::from_millis(1000));
+        drop(recording.stream);
+
+        let samples = recording.samples.lock().unwrap();
+        assert_ne!(samples[0], 0.0, "recording started with silence");
+
+        let expected = recording.sample_rate as usize * recording.channels as usize;
+        let actual = samples.len();
+        let tolerance = expected / 5;
+        assert!(
+            actual.abs_diff(expected) <= tolerance,
+            "Expected about {expected} samples, but got {actual} samples"
+        );
+    }
+
     fn play_test_tone() -> Result<Stream, Box<dyn std::error::Error>> {
+        play_sine(0.001)
+    }
+
+    fn play_silence() -> Result<Stream, Box<dyn std::error::Error>> {
+        play_sine(0.0)
+    }
+
+    fn play_sine(amplitude: f32) -> Result<Stream, Box<dyn std::error::Error>> {
         let host = cpal::default_host();
         let device = host
             .default_output_device()
@@ -178,7 +226,7 @@ mod tests {
             config,
             move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
                 for frame in data.chunks_mut(channels) {
-                    let value = (phase * 2.0 * std::f32::consts::PI).sin() * 0.001;
+                    let value = (phase * 2.0 * std::f32::consts::PI).sin() * amplitude;
                     phase = (phase + 440.0 / sample_rate) % 1.0;
                     for sample in frame {
                         *sample = value;
