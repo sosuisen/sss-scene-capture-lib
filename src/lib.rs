@@ -124,6 +124,26 @@ pub fn stop_recording(recording: Recording) {
     let _ = recording.thread.join();
 }
 
+pub fn save_wav(
+    samples: &[f32],
+    sample_rate: u32,
+    channels: u16,
+    path: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let spec = hound::WavSpec {
+        channels,
+        sample_rate,
+        bits_per_sample: 32,
+        sample_format: hound::SampleFormat::Float,
+    };
+    let mut writer = hound::WavWriter::create(path, spec)?;
+    for &sample in samples {
+        writer.write_sample(sample)?;
+    }
+    writer.finalize()?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
@@ -245,6 +265,20 @@ mod tests {
         std::thread::sleep(Duration::from_millis(500));
 
         assert_eq!(samples.lock().unwrap().len(), count_at_stop);
+    }
+
+    // 音声が指定のファイル名で保存される。
+    #[test]
+    fn saves_wav_to_the_given_file_name() {
+        let dir = std::env::temp_dir().join("sss_saves_wav_to_the_given_file_name");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("sound.wav");
+        let samples = [0.0f32, 0.5, -0.5, 0.0];
+
+        save_wav(&samples, 48000, 2, &path).unwrap();
+
+        assert!(path.exists(), "{} was not created", path.display());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     fn play_test_tone() -> Result<Stream, Box<dyn std::error::Error>> {
