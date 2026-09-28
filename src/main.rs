@@ -16,11 +16,21 @@ fn main() {
     let path = session_dir.join("screen.png");
 
     let recording = start_recording().unwrap();
+    let sample_rate = recording.sample_rate;
+    let channels = recording.channels;
     println!("Recording... Press Enter to stop.");
-    wait_for_enter(&mut reader, || stop_recording(recording)).unwrap();
+    let mut samples: Vec<f32> = Vec::new();
+    wait_for_enter(&mut reader, || samples = stop_recording(recording)).unwrap();
     println!("Stopped.");
 
     save_image(&image, &path).unwrap();
+    save_wav(
+        &samples,
+        sample_rate,
+        channels,
+        &session_dir.join("sound.wav"),
+    )
+    .unwrap();
 }
 
 fn show_startup_prompt(writer: &mut impl Write) -> std::io::Result<()> {
