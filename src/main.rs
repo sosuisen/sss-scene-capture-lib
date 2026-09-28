@@ -12,5 +12,12 @@ fn main() {
     println!("Starting scene capture...");
     let image = capture_primary_monitor().unwrap();
     println!("Captured image: {}x{}", image.width(), image.height());
-    image.save_with_format("./screen.png", image::ImageFormat::Png).unwrap();
+    image
+        .save_with_format("./screen.png", image::ImageFormat::Png)
+        .unwrap();
+
+    let recording = start_recording().unwrap();
+    println!("Recording... Press Enter to stop.");
+    wait_for_enter(&mut reader, || stop_recording(recording)).unwrap();
+    println!("Stopped.");
 }
