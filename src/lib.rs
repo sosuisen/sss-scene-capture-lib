@@ -99,6 +99,10 @@ pub fn start_recording() -> Result<Recording, Box<dyn std::error::Error>> {
     })
 }
 
+pub fn stop_recording(recording: Recording) {
+    drop(recording);
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
@@ -235,6 +239,23 @@ mod tests {
             actual.abs_diff(expected) <= tolerance,
             "Expected about {expected} samples (1.5 seconds), but got {actual} samples"
         );
+    }
+
+    // 録音停止ルーチンを呼び出すと、録音が停止する。
+    #[test]
+    fn stop_recording_routine_stops_recording() {
+        let _audio = AUDIO_DEVICE.lock().unwrap_or_else(|e| e.into_inner());
+
+        let _tone = play_test_tone().unwrap();
+        let recording = start_recording().unwrap();
+        let samples = Arc::clone(&recording.samples);
+        std::thread::sleep(Duration::from_millis(500));
+
+        stop_recording(recording);
+        let count_at_stop = samples.lock().unwrap().len();
+        std::thread::sleep(Duration::from_millis(500));
+
+        assert_eq!(samples.lock().unwrap().len(), count_at_stop);
     }
 
     fn play_test_tone() -> Result<Stream, Box<dyn std::error::Error>> {
