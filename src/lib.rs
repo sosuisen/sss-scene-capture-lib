@@ -4,6 +4,7 @@ use cpal::traits::HostTrait;
 use cpal::traits::StreamTrait;
 use std::io::BufRead;
 use std::io::Write;
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::mpsc::Sender;
@@ -53,6 +54,11 @@ pub fn capture_primary_monitor() -> Result<RgbaImage, Box<dyn std::error::Error>
         .find(|m| m.is_primary().unwrap_or(false))
         .ok_or("primary monitor not found")?;
     Ok(primary.capture_image()?)
+}
+
+pub fn save_image(image: &RgbaImage, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    image.save(path)?;
+    Ok(())
 }
 
 pub fn start_recording() -> Result<Recording, Box<dyn std::error::Error>> {
@@ -207,6 +213,20 @@ mod tests {
         let image = capture_primary_monitor().unwrap();
         assert!(image.width() > 100);
         assert!(image.height() > 100);
+    }
+
+    // 画像が指定のファイル名で保存される。
+    #[test]
+    fn saves_image_to_the_given_file_name() {
+        let dir = std::env::temp_dir().join("sss_saves_image_to_the_given_file_name");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("screen.png");
+        let image = RgbaImage::new(2, 2);
+
+        save_image(&image, &path).unwrap();
+
+        assert!(path.exists(), "{} was not created", path.display());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     // 録音開始ルーチンは、Recordingを返す。
