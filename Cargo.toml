@@ -7,3 +7,4 @@ edition = "2024"
 xcap = { version = "0.9", features = ["wgc"] }
 cpal = "0.18"
 chrono = "0.4"
+hound = "3.5"
