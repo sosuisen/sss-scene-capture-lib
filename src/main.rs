@@ -5,7 +5,7 @@ use std::io::Write;
 fn main() {
     show_startup_prompt(&mut std::io::stdout()).unwrap();
     let mut reader = std::io::stdin().lock();
-    wait_for_enter(&mut reader, || {}).unwrap();
+    wait_for_enter(&mut reader).unwrap();
 
     println!("Starting scene capture...");
     let image = capture_primary_monitor().unwrap();
@@ -16,11 +16,11 @@ fn main() {
     let path = session_dir.join("screen.png");
 
     let recording = start_recording().unwrap();
+    println!("Recording... Press Enter to stop.");
+    wait_for_enter(&mut reader).unwrap();
     let sample_rate = recording.sample_rate;
     let channels = recording.channels;
-    println!("Recording... Press Enter to stop.");
-    let mut samples: Vec<f32> = Vec::new();
-    wait_for_enter(&mut reader, || samples = stop_recording(recording)).unwrap();
+    let samples = stop_recording(recording);
     println!("Stopped.");
 
     save_image(&image, &path).unwrap();
@@ -38,13 +38,11 @@ fn show_startup_prompt(writer: &mut impl Write) -> std::io::Result<()> {
     Ok(())
 }
 
-fn wait_for_enter(reader: &mut impl BufRead, on_enter: impl FnOnce()) -> std::io::Result<()> {
+// 1行読み、Enter（改行）が含まれていればtrueを返す。含まれないのは入力が閉じられたときだけである。
+fn wait_for_enter(reader: &mut impl BufRead) -> std::io::Result<bool> {
     let mut line = String::new();
     reader.read_line(&mut line)?;
-    if line.contains('\n') {
-        on_enter();
-    }
-    Ok(())
+    Ok(line.contains('\n'))
 }
 
 fn create_session_dir(now: chrono::DateTime<chrono::Local>) -> std::io::Result<std::path::PathBuf> {
@@ -75,22 +73,18 @@ mod tests {
         );
     }
 
-    // 入力にEnterキーが含まれている場合、on_enterを呼び出す。
+    // 入力にEnterキーが含まれている場合、trueを返す。
     #[test]
-    fn calls_on_enter_when_enter_key_is_included_in_input() {
+    fn returns_true_when_enter_key_is_included_in_input() {
         let mut input: &[u8] = b"abc\n";
-        let mut called = false;
-        wait_for_enter(&mut input, || called = true).unwrap();
-        assert!(called);
+        assert!(wait_for_enter(&mut input).unwrap());
     }
 
-    // 入力にEnterキーが含まれていない場合、on_enterを呼び出さない。
+    // 入力にEnterキーが含まれていない場合、falseを返す。
     #[test]
-    fn does_not_call_on_enter_when_enter_key_is_not_included_in_input() {
+    fn returns_false_when_enter_key_is_not_included_in_input() {
         let mut input: &[u8] = b"abc";
-        let mut called = false;
-        wait_for_enter(&mut input, || called = true).unwrap();
-        assert!(!called);
+        assert!(!wait_for_enter(&mut input).unwrap());
     }
 
     // デスクトップのsss-scene-captureフォルダの下に、日時名のフォルダが作られる。
