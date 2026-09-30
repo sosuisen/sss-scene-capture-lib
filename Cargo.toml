@@ -9,8 +9,8 @@ repository = "https://github.com/sosuisen/sss-scene-capture-lib"
 readme = "README.md"
 keywords = ["screenshot", "audio", "recording", "wasapi", "ffi"]
 categories = ["multimedia::audio", "multimedia::images", "command-line-utilities"]
-# plans.mdは作業用の使い捨てtodoなので、パッケージに含めない。
-exclude = ["docs/plans.md", "screen.png"]
+# 開発者向けの内部文書（ストーリーマップ、ADR、作業用todo）はパッケージに含めない。docs/ffi.mdはREADMEから参照するので含める。
+exclude = ["docs/adr", "docs/plans.md", "docs/storymap.md", "screen.png"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
