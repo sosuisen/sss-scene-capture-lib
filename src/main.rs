@@ -67,7 +67,7 @@ fn save(
     samples: Vec<f32>,
     sample_rate: u32,
     channels: u16,
-    image: xcap::image::ImageBuffer<xcap::image::Rgba<u8>, Vec<u8>>,
+    image: RgbaImage,
 ) {
     let now = chrono::Local::now();
     let session_dir = create_session_dir(now).unwrap();
