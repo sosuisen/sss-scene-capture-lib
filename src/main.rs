@@ -2,6 +2,13 @@ use sss_scene_capture_lib::*;
 use std::io::BufRead;
 use std::io::Write;
 
+#[derive(Debug, PartialEq)]
+enum AfterStopCommand {
+    SaveAndNext,
+    RetakePicture,
+    Quit,
+}
+
 // Ctrl+Cで終了するまでセッションを繰り返す。入力が閉じられた（EOF）ときも終了する。
 fn main() {
     let mut reader = std::io::stdin().lock();
@@ -12,7 +19,7 @@ fn main() {
         }
 
         println!("Starting scene capture...");
-        let image = capture_primary_monitor().unwrap();
+        let mut image = capture_primary_monitor().unwrap();
         println!("Captured image: {}x{}", image.width(), image.height());
 
         let now = chrono::Local::now();
@@ -22,10 +29,25 @@ fn main() {
         let recording = start_recording().unwrap();
         println!("Recording... Press Enter to stop.");
         let pressed = wait_for_enter(&mut reader).unwrap();
+        if !pressed {
+            break;
+        }
         let sample_rate = recording.sample_rate;
         let channels = recording.channels;
         let samples = stop_recording(recording);
         println!("Stopped.");
+
+        let quit = loop {
+            println!("Press Enter to save and next, s+Enter to retake picture, q+Enter to quit.");
+            match read_after_stop_command(&mut reader).unwrap() {
+                AfterStopCommand::RetakePicture => {
+                    image = capture_primary_monitor().unwrap();
+                    println!("Retook image: {}x{}", image.width(), image.height());
+                }
+                AfterStopCommand::SaveAndNext => break false,
+                AfterStopCommand::Quit => break true,
+            }
+        };
 
         save_image(&image, &path).unwrap();
         save_mp3(
@@ -37,7 +59,7 @@ fn main() {
         .unwrap();
         println!("Saved to {}", session_dir.display());
 
-        if !pressed {
+        if quit {
             break;
         }
     }
@@ -64,6 +86,19 @@ fn create_session_dir(now: chrono::DateTime<chrono::Local>) -> std::io::Result<s
         .join(now.format("%Y-%m-%d_%H-%M-%S").to_string());
     std::fs::create_dir_all(&dir)?;
     Ok(dir)
+}
+
+fn read_after_stop_command(reader: &mut impl BufRead) -> std::io::Result<AfterStopCommand> {
+    let mut line = String::new();
+    reader.read_line(&mut line)?;
+    if !line.contains('\n') {
+        return Ok(AfterStopCommand::Quit);
+    }
+    match line.trim() {
+        "s" => Ok(AfterStopCommand::RetakePicture),
+        "q" => Ok(AfterStopCommand::Quit),
+        _ => Ok(AfterStopCommand::SaveAndNext),
+    }
 }
 
 #[cfg(test)]
@@ -115,5 +150,15 @@ mod tests {
         );
         assert!(dir.is_dir(), "{} was not created", dir.display());
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    // 入力がs+Enterの場合、RetakePictureを返す。
+    #[test]
+    fn returns_retake_picture_when_input_is_s_plus_enter() {
+        let mut input: &[u8] = b"s\n";
+        assert_eq!(
+            read_after_stop_command(&mut input).unwrap(),
+            AfterStopCommand::RetakePicture
+        );
     }
 }
