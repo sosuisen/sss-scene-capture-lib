@@ -75,4 +75,4 @@ save_mp3(&samples, sample_rate, channels, Path::new("sound.mp3"))?;
 
 ## ライセンス
 
-MIT License。詳細は[LICENSE](LICENSE)を見ること。
+[MIT License](LICENSE)
