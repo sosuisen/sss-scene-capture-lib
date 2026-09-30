@@ -1,6 +1,7 @@
 use sss_scene_capture_lib::*;
 use std::io::BufRead;
 use std::io::Write;
+use xcap::image::RgbaImage;
 
 #[derive(Debug, PartialEq)]
 enum AfterStopCommand {
@@ -19,36 +20,22 @@ fn main() {
         }
 
         println!("Starting scene capture...");
-        let mut image = capture_primary_monitor().unwrap();
+        let image = capture_primary_monitor().unwrap();
         println!("Captured image: {}x{}", image.width(), image.height());
+
+        println!("Recording... Press Enter to stop.");
+        let Some((samples, sample_rate, channels)) = capture_sound(&mut reader) else {
+            break;
+        };
+        println!("Stopped.");
+
+        let Some(image) = confirm_image(&mut reader, image) else {
+            break;
+        };
 
         let now = chrono::Local::now();
         let session_dir = create_session_dir(now).unwrap();
         let path = session_dir.join("screen.png");
-
-        let recording = start_recording().unwrap();
-        println!("Recording... Press Enter to stop.");
-        let pressed = wait_for_enter(&mut reader).unwrap();
-        if !pressed {
-            break;
-        }
-        let sample_rate = recording.sample_rate;
-        let channels = recording.channels;
-        let samples = stop_recording(recording);
-        println!("Stopped.");
-
-        let quit = loop {
-            println!("Press Enter to save and next, s+Enter to retake picture, q+Enter to quit.");
-            match read_after_stop_command(&mut reader).unwrap() {
-                AfterStopCommand::RetakePicture => {
-                    image = capture_primary_monitor().unwrap();
-                    println!("Retook image: {}x{}", image.width(), image.height());
-                }
-                AfterStopCommand::SaveAndNext => break false,
-                AfterStopCommand::Quit => break true,
-            }
-        };
-
         save_image(&image, &path).unwrap();
         save_mp3(
             &samples,
@@ -58,9 +45,31 @@ fn main() {
         )
         .unwrap();
         println!("Saved to {}", session_dir.display());
+    }
+}
 
-        if quit {
-            break;
+fn capture_sound(reader: &mut impl BufRead) -> Option<(Vec<f32>, u32, u16)> {
+    let recording = start_recording().unwrap();
+    if !wait_for_enter(reader).unwrap() {
+        // 入力が閉じられた（EOF）ときはNoneを返す。
+        return None;
+    }
+    let sample_rate = recording.sample_rate;
+    let channels = recording.channels;
+    let samples = stop_recording(recording);
+    Some((samples, sample_rate, channels))
+}
+
+fn confirm_image(reader: &mut impl BufRead, mut image: RgbaImage) -> Option<RgbaImage> {
+    loop {
+        println!("Press Enter to save and next, s+Enter to retake picture, q+Enter to quit.");
+        match read_after_stop_command(reader).unwrap() {
+            AfterStopCommand::RetakePicture => {
+                image = capture_primary_monitor().unwrap();
+                println!("Retook image: {}x{}", image.width(), image.height());
+            }
+            AfterStopCommand::SaveAndNext => return Some(image),
+            AfterStopCommand::Quit => return None,
         }
     }
 }
