@@ -63,12 +63,7 @@ fn confirm_image(reader: &mut impl BufRead, mut image: RgbaImage) -> Option<Rgba
     }
 }
 
-fn save(
-    samples: Vec<f32>,
-    sample_rate: u32,
-    channels: u16,
-    image: RgbaImage,
-) {
+fn save(samples: Vec<f32>, sample_rate: u32, channels: u16, image: RgbaImage) {
     let now = chrono::Local::now();
     let session_dir = create_session_dir(now).unwrap();
     let path = session_dir.join("screen.png");
@@ -107,15 +102,18 @@ fn create_session_dir(now: chrono::DateTime<chrono::Local>) -> std::io::Result<s
 }
 
 fn read_after_stop_command(reader: &mut impl BufRead) -> std::io::Result<AfterStopCommand> {
-    let mut line = String::new();
-    reader.read_line(&mut line)?;
-    if !line.contains('\n') {
-        return Ok(AfterStopCommand::Quit);
-    }
-    match line.trim() {
-        "s" => Ok(AfterStopCommand::RetakePicture),
-        "q" => Ok(AfterStopCommand::Quit),
-        _ => Ok(AfterStopCommand::SaveAndNext),
+    loop {
+        let mut line = String::new();
+        reader.read_line(&mut line)?;
+        if !line.contains('\n') {
+            return Ok(AfterStopCommand::Quit);
+        }
+        match line.trim() {
+            "" => return Ok(AfterStopCommand::SaveAndNext),
+            "s" => return Ok(AfterStopCommand::RetakePicture),
+            "q" => return Ok(AfterStopCommand::Quit),
+            _ => {}
+        }
     }
 }
 
@@ -209,6 +207,16 @@ mod tests {
         assert_eq!(
             read_after_stop_command(&mut input).unwrap(),
             AfterStopCommand::Quit
+        );
+    }
+
+    // 入力が未知の文字列のとき、無視して次の行を読む。
+    #[test]
+    fn ignores_unknown_input_and_reads_the_next_line() {
+        let mut input: &[u8] = b"x\ns\n";
+        assert_eq!(
+            read_after_stop_command(&mut input).unwrap(),
+            AfterStopCommand::RetakePicture
         );
     }
 }
