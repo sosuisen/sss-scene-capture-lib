@@ -172,12 +172,12 @@ pub fn save_mp3(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::time::Duration;
 
     use super::*;
 
-    static AUDIO_DEVICE: Mutex<()> = Mutex::new(());
+    pub(crate) static AUDIO_DEVICE: Mutex<()> = Mutex::new(());
 
     // プライマリーモニターをキャプチャしたら、高さと幅が100より大きい画像が返ってくる。
     #[test]
@@ -337,7 +337,7 @@ mod tests {
         );
     }
 
-    fn play_test_tone() -> Result<Stream, Box<dyn std::error::Error>> {
+    pub(crate) fn play_test_tone() -> Result<Stream, Box<dyn std::error::Error>> {
         play_sine(0.001)
     }
 
@@ -372,3 +372,5 @@ mod tests {
         Ok(stream)
     }
 }
+
+pub mod ffi;

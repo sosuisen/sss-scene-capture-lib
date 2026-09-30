@@ -3,6 +3,14 @@ name = "sss-scene-capture-lib"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# DLLと同名だとPDBが衝突するので、実行ファイルは別名にする。
+[[bin]]
+name = "sss-scene-capture"
+path = "src/main.rs"
+
 [dependencies]
 xcap = { version = "0.9", features = ["wgc"] }
 cpal = "0.18"
