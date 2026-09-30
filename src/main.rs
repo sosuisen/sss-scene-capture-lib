@@ -181,8 +181,7 @@ mod tests {
     // 入力がEnterのみの場合、SaveAndNextを返す。
     #[test]
     fn returns_save_and_next_when_input_is_enter_only() {
-        let mut input: &[u8] = b"
-";
+        let mut input: &[u8] = b"\n";
         assert_eq!(
             read_after_stop_command(&mut input).unwrap(),
             AfterStopCommand::SaveAndNext
@@ -192,8 +191,7 @@ mod tests {
     // 入力がq+Enterの場合、Quitを返す。
     #[test]
     fn returns_quit_when_input_is_q_plus_enter() {
-        let mut input: &[u8] = b"q
-";
+        let mut input: &[u8] = b"q\n";
         assert_eq!(
             read_after_stop_command(&mut input).unwrap(),
             AfterStopCommand::Quit
