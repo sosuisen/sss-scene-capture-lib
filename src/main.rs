@@ -9,7 +9,7 @@ enum AfterStopCommand {
     Quit,
 }
 
-// Ctrl+Cで終了するまでセッションを繰り返す。入力が閉じられた（EOF）ときも終了する。
+// Ctrl+Cまたはq+Enterで終了するまでセッションを繰り返す。入力が閉じられた（EOF）ときも終了する。
 fn main() {
     let mut reader = std::io::stdin().lock();
     loop {
@@ -159,6 +159,38 @@ mod tests {
         assert_eq!(
             read_after_stop_command(&mut input).unwrap(),
             AfterStopCommand::RetakePicture
+        );
+    }
+
+    // 入力がEnterのみの場合、SaveAndNextを返す。
+    #[test]
+    fn returns_save_and_next_when_input_is_enter_only() {
+        let mut input: &[u8] = b"
+";
+        assert_eq!(
+            read_after_stop_command(&mut input).unwrap(),
+            AfterStopCommand::SaveAndNext
+        );
+    }
+
+    // 入力がq+Enterの場合、Quitを返す。
+    #[test]
+    fn returns_quit_when_input_is_q_plus_enter() {
+        let mut input: &[u8] = b"q
+";
+        assert_eq!(
+            read_after_stop_command(&mut input).unwrap(),
+            AfterStopCommand::Quit
+        );
+    }
+
+    // 入力が閉じられている（EOF）場合、Quitを返す。
+    #[test]
+    fn returns_quit_when_input_is_closed() {
+        let mut input: &[u8] = b"";
+        assert_eq!(
+            read_after_stop_command(&mut input).unwrap(),
+            AfterStopCommand::Quit
         );
     }
 }
