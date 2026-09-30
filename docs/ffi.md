@@ -1,7 +1,7 @@
 # Javaなど別言語から使う（FFI）
 
 `cargo build --release`で`target/release/sss_scene_capture_lib.dll`ができる。
-このDLLはC ABIの関数を公開している（`src/ffi.rs`、ADR-003、ADR-005）。
+このDLLはC ABIの関数を公開している（`src/ffi.rs`）。
 
 | 関数 | 役割 |
 | --- | --- |
