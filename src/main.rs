@@ -23,7 +23,7 @@ fn main() {
         let image = capture_primary_monitor().unwrap();
         println!("Captured image: {}x{}", image.width(), image.height());
 
-        println!("Recording... Press Enter to stop.");
+        println!("Recording sound... Press Enter to stop.");
         let Some((samples, sample_rate, channels)) = capture_sound(&mut reader) else {
             break;
         };
@@ -33,18 +33,7 @@ fn main() {
             break;
         };
 
-        let now = chrono::Local::now();
-        let session_dir = create_session_dir(now).unwrap();
-        let path = session_dir.join("screen.png");
-        save_image(&image, &path).unwrap();
-        save_mp3(
-            &samples,
-            sample_rate,
-            channels,
-            &session_dir.join("sound.mp3"),
-        )
-        .unwrap();
-        println!("Saved to {}", session_dir.display());
+        save(samples, sample_rate, channels, image);
     }
 }
 
@@ -72,6 +61,26 @@ fn confirm_image(reader: &mut impl BufRead, mut image: RgbaImage) -> Option<Rgba
             AfterStopCommand::Quit => return None,
         }
     }
+}
+
+fn save(
+    samples: Vec<f32>,
+    sample_rate: u32,
+    channels: u16,
+    image: xcap::image::ImageBuffer<xcap::image::Rgba<u8>, Vec<u8>>,
+) {
+    let now = chrono::Local::now();
+    let session_dir = create_session_dir(now).unwrap();
+    let path = session_dir.join("screen.png");
+    save_image(&image, &path).unwrap();
+    save_mp3(
+        &samples,
+        sample_rate,
+        channels,
+        &session_dir.join("sound.mp3"),
+    )
+    .unwrap();
+    println!("Saved to {}", session_dir.display());
 }
 
 fn show_startup_prompt(writer: &mut impl Write) -> std::io::Result<()> {
