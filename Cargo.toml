@@ -2,6 +2,15 @@
 name = "sss-scene-capture-lib"
 version = "0.1.0"
 edition = "2024"
+authors = ["Hidekazu Kubota"]
+license = "MIT"
+description = "Capture a screenshot and system sound on Windows, as a CLI, a Rust library, and a C ABI DLL"
+repository = "https://github.com/sosuisen/sss-scene-capture-lib"
+readme = "README.md"
+keywords = ["screenshot", "audio", "recording", "wasapi", "ffi"]
+categories = ["multimedia::audio", "multimedia::images", "command-line-utilities"]
+# plans.mdは作業用の使い捨てtodoなので、パッケージに含めない。
+exclude = ["docs/plans.md", "screen.png"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]

@@ -72,3 +72,7 @@ save_mp3(&samples, sample_rate, channels, Path::new("sound.mp3"))?;
 
 `cargo build --release`で`target/release/sss_scene_capture_lib.dll`ができる。
 このDLLはC ABIの関数を公開している。関数、戻り値のコード、Java（FFM API）からの呼び出し例は[docs/ffi.md](docs/ffi.md)を見ること。
+
+## ライセンス
+
+MIT License。詳細は[LICENSE](LICENSE)を見ること。
